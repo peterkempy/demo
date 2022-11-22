@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    # Vault integration allows secrets to be injected via annotations
+    # in this case, the config is mounted as a volume at /vault/secrets/database.properties into the container
+    vault.hashicorp.com/agent-inject-secret-database.properties: "/env/demosrv/database"
+    vault.hashicorp.com/agent-inject-template-database.properties: |
+      {{- with secret "/env/demosrv/database" }}
+      spring.datasource.url={{ .Data.jdbc-url }}
+      spring.datasource.username={{ .Data.username }}
+      spring.datasource.password={{ .Data.password }}
+      {{- end }}
+  name: pk-demo-app
+  namespace: default
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: pk-demo
+  template:
+    metadata:
+      labels:
+        app: pk-demo
+    spec:
+      containers:
+        - name: pk-demo
+          image: pk/demo:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          # health checks - liveness probes, readiness probes
+          livenessProbe:
+            httpGet:
+              scheme: HTTP
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            timeoutSeconds: 30
+          # resource limits
+          resources:
+            limits:
+              memory: "200Mi"
+              cpu: "1"
+          # volume mounts - for AWS EFS or EBS volumes
+          volumeMounts:
+            - name: pretend-this-is-an-aws-nfs-volume
+              mountPath: "/mnt/pk-demo"
+            - name: pretend-this-is-created-by-vault-agent
+              mountPath: "/vault/secrets/database.properties"
+              subPath: "database.properties"
+      volumes:
+        - name: pretend-this-is-an-aws-nfs-volume
+          emptyDir: {}
+        - name: pretend-this-is-created-by-vault-agent
+          configMap:
+            name: pk-demo-configmap
+            items:
+              - key: database.properties
+                path: database.properties
+
+
+
+
+
+
+
+
+
